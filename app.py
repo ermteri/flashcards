@@ -1,4 +1,4 @@
-# app.py – now with permanent storage across server restarts
+# app.py – oförändrad förutom att vi inte längre skickar "audio"
 from flask import Flask, render_template, jsonify, request
 import json
 import random
@@ -7,14 +7,13 @@ import os
 app = Flask(__name__)
 
 CARDS_FILE = 'cards.json'
-FAILED_FILE = 'failed.json'      # ← NEW: persistent failed list
+FAILED_FILE = 'failed.json'
 SESSION_SIZE = 50
 
 def load_cards():
     with open(CARDS_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-# NEW: load and save failed indices to disk
 def load_failed_indices():
     if os.path.exists(FAILED_FILE):
         with open(FAILED_FILE, 'r', encoding='utf-8') as f:
@@ -74,7 +73,8 @@ def get_quiz_cards():
             "index": item["original_index"],
             "front": c["front"],
             "back": c["back"],
-            "pinyin": c.get("pinyin", "")   # ← DEN HÄR RADEN ÄR NYCKELN!
+            "pinyin": c.get("pinyin", "")
+            # ← INGEN "audio" längre – vi använder TTS i webbläsaren!
         })
 
     return jsonify(result)

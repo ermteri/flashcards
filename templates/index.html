@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Flashcards + Pinyin</title>
+  <title>Smart Flashcards + Ljud</title>
   <style>
     body {font-family: Arial, sans-serif; max-width: 660px; margin: 40px auto; padding: 20px; background: #f4f4f9; line-height: 1.6;}
     h1 {text-align: center; color: #333; margin-bottom: 30px;}
@@ -31,22 +31,27 @@
     .correct {background: #4CAF50; color: white;}
     .wrong {background: #f44336; color: white;}
 
+    #audio-btn {
+      margin-top: 18px; padding: 12px 28px; font-size: 19px; background: #9c27b0; color: white;
+      border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
     .progress {text-align: center; font-size: 22px; margin: 20px 0; color: #555; font-weight: bold;}
     .summary {text-align: center; padding: 50px 30px; background: white; border-radius: 16px; box-shadow: 0 8px 25px rgba(0,0,0,0.12);}
   </style>
 </head>
 <body>
-  <h1>Smart Flashcards + Pinyin</h1>
+  <h1>Smart Flashcards + Ljud</h1>
   
   <div class="controls">
     <p>Välj riktning:</p>
     <button class="dir-btn active" data-dir="front-to-back">Svenska → Kinesiska</button>
     <button class="dir-btn" data-dir="back-to-front">Kinesiska → Svenska</button>
     <br><br>
-    <button class="start-btn" disabled>Laddar misslyckade kort…</button>
+    <button class="start-btn" disabled>Starta quiz (50 kort)</button>
   </div>
 
-  <div id="quiz" style="display: none;">
+  <div id="quiz" style="display:  none;">
     <div class="progress">Kort <span id="current">1</span> av <span id="total">50</span></div>
     
     <div class="card-wrapper">
@@ -75,6 +80,7 @@
   <script>
     let cards = [], currentIndex = 0, failedIndices = new Set(), direction = 'front-to-back';
 
+    // ─────── LADDA MISSLYCKADE KORT (fixat!) ───────
     fetch('/api/failed')
       .then(r => r.json())
       .then(data => {
@@ -82,7 +88,8 @@
         document.querySelector('.start-btn').disabled = false;
         document.querySelector('.start-btn').textContent = 'Starta quiz (50 kort)';
       })
-      .catch(() => {
+      .catch(err => {
+        console.error("Kunde inte hämta failed.json – startar ändå", err);
         document.querySelector('.start-btn').disabled = false;
         document.querySelector('.start-btn').textContent = 'Starta quiz (50 kort)';
       });
@@ -117,38 +124,52 @@
       const card = cards[currentIndex];
       const toChinese = direction === 'front-to-back';
 
-      // Framsidan (frågan)
       document.querySelector('.front').textContent = toChinese ? card.front : card.back;
 
-      // Rensa allt i svaret
+      // Rensa svar
       document.querySelector('.hanzi').textContent = '';
       document.querySelector('.pinyin').textContent = '';
       document.querySelector('.translation').textContent = '';
 
-      // Göm svaret och knappar
       document.querySelector('.answer').classList.remove('visible');
       document.getElementById('judge-buttons').style.display = 'none';
       document.getElementById('check-btn').style.display = 'block';
 
-      // Spara vad som SKA visas när man klickar Check!
+      // Spara innehållet för svaret
       window.currentAnswer = {
-        hanzi: toChinese ? card.back : card.front,   // kinesiska tecken
+        chinese: card.back,
         pinyin: card.pinyin || '',
-        translation: toChinese ? card.front : card.back   // svenska
+        swedish: card.front
       };
 
       document.getElementById('current').textContent = currentIndex + 1;
     }
 
     function revealAnswer() {
-      // Nu fyller vi i rätt innehåll
-      // Svenska → Kinesiska: visa bara kinesiska + pinyin
-      // Kinesiska → Svenska: visa bara pinyin + svenska
       const toChinese = direction === 'front-to-back';
 
-      document.querySelector('.hanzi').textContent       = toChinese ? window.currentAnswer.hanzi : '';
+      // Visa rätt innehåll
+      document.querySelector('.hanzi').textContent       = toChinese ? window.currentAnswer.chinese : '';
       document.querySelector('.pinyin').textContent      = window.currentAnswer.pinyin;
-      document.querySelector('.translation').textContent = toChinese ? '' : window.currentAnswer.translation;
+      document.querySelector('.translation').textContent = toChinese ? '' : window.currentAnswer.swedish;
+
+      // Ljudknapp – läser ALLTID upp kinesiska
+      const pinyinDiv = document.querySelector('.pinyin');
+      const oldBtn = document.getElementById('audio-btn');
+      if (oldBtn) oldBtn.remove();
+
+      if (window.currentAnswer.chinese.trim()) {
+        const btn = document.createElement('button');
+        btn.id = 'audio-btn';
+        btn.innerHTML = 'Ljud';
+        btn.onclick = () => {
+          const utterance = new SpeechSynthesisUtterance(window.currentAnswer.chinese);
+          utterance.lang = 'zh-CN';
+          utterance.rate = 0.8;
+          speechSynthesis.speak(utterance);
+        };
+        pinyinDiv.appendChild(btn);
+      }
 
       document.querySelector('.answer').classList.add('visible');
       document.getElementById('judge-buttons').style.display = 'inline-block';
@@ -174,24 +195,12 @@
       document.getElementById('summary').innerHTML = `
         <h2>Quiz klar!</h2>
         <p>Du kommer få repetera <strong>${failedCount}</strong> kort nästa gång.</p>
-        <p><em>Sparas permanent</em></p>
         <br><br>
         <button onclick="location.reload()" style="padding:18px 36px; font-size:20px; background:#4CAF50; color:white; border:none; border-radius:8px; cursor:pointer;">
           Ny quiz
         </button>
-        <button onclick="clearFailed()" style="margin-left:25px; padding:16px 32px; background:#f44336; color:white; border:none; border-radius:8px; cursor:pointer;">
-          Rensa misslyckade
-        </button>
       `;
       document.getElementById('summary').style.display = 'block';
-    }
-
-    function clearFailed() {
-      if (confirm('Rensa alla misslyckade kort?')) {
-        failedIndices.clear();
-        fetch('/api/failed', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({failed_indices: []}) });
-        alert('Rensat!');
-      }
     }
   </script>
 </body>
